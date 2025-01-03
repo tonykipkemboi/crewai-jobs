@@ -28,6 +28,8 @@ jobs:
         which chromedriver
         chromium-browser --version
         chromedriver --version
+        echo "CHROME_BIN=/snap/bin/chromium" >> $GITHUB_ENV
+        echo "CHROMEDRIVER_PATH=/usr/bin/chromedriver" >> $GITHUB_ENV
         
     - name: Install dependencies
       run: |
