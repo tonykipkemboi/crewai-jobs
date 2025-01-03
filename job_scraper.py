@@ -35,14 +35,41 @@ def setup_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     
-    if os.getenv('GITHUB_ACTIONS'):
-        # Configuration for Selenium Docker container
-        chrome_options.binary_location = "/usr/bin/chromium"  # Updated path for Selenium container
-        service = Service(executable_path="/usr/bin/chromedriver")
-        return webdriver.Chrome(service=service, options=chrome_options)
+    # Check different possible Chrome/Chromium binary locations
+    possible_binaries = [
+        "/usr/bin/google-chrome",  # Standard location
+        "/usr/bin/chromium-browser",  # Ubuntu Chromium package
+        "/usr/bin/chromium",  # Snap package location
+        "/snap/bin/chromium",  # Alternative snap location
+    ]
+    
+    # Find the first existing binary
+    binary_path = next((path for path in possible_binaries if os.path.exists(path)), None)
+    
+    if binary_path:
+        chrome_options.binary_location = binary_path
+        print(f"Using Chrome/Chromium binary: {binary_path}")
     else:
-        # Local development configuration
-        return webdriver.Chrome(options=chrome_options)
+        print("Warning: Could not find Chrome/Chromium binary")
+    
+    # Try to find ChromeDriver
+    chromedriver_paths = [
+        "/usr/bin/chromedriver",  # Standard location
+        "/usr/local/bin/chromedriver",  # Alternative location
+        "/snap/bin/chromedriver",  # Snap location
+    ]
+    
+    driver_path = next((path for path in chromedriver_paths if os.path.exists(path)), None)
+    
+    if driver_path:
+        service = Service(executable_path=driver_path)
+        print(f"Using ChromeDriver: {driver_path}")
+    else:
+        # Fallback to default Service initialization
+        print("Warning: Could not find ChromeDriver, using default service")
+        service = Service()
+    
+    return webdriver.Chrome(service=service, options=chrome_options)
 
 def safe_find_element(element, by, selector):
     """Safely find an element, returning None if not found."""
