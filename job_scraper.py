@@ -18,6 +18,7 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import logging
 import sys
 import platform
+from webdriver_manager.chrome import ChromeDriverManager
 
 # URL of the job listing site
 URL = "https://job.zip/jobs/crewai"
@@ -35,45 +36,38 @@ def setup_driver():
     logging.info("Setting up Chrome WebDriver...")
     
     # Get browser binary path from environment variable or use default
-    chrome_binary = os.getenv('CHROME_BIN', '/usr/bin/chromium-browser')
-    chromedriver_path = os.getenv('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
-    
-    logging.info(f"Chrome binary path: {chrome_binary}")
-    logging.info(f"ChromeDriver path: {chromedriver_path}")
-    
-    # Verify binary existence
-    if not os.path.exists(chrome_binary):
-        logging.warning(f"Chrome binary not found at {chrome_binary}")
-        # Try alternative locations
-        alternative_paths = [
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/snap/bin/chromium'
-        ]
-        for path in alternative_paths:
-            if os.path.exists(path):
-                chrome_binary = path
-                logging.info(f"Found Chrome binary at alternative location: {path}")
-                break
-        else:
-            raise FileNotFoundError(f"Chrome binary not found. Tried paths: {[chrome_binary] + alternative_paths}")
+    chrome_binary = os.getenv('CHROME_BIN')
+    chromedriver_path = os.getenv('CHROMEDRIVER_PATH')
     
     # Set up Chrome options
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.binary_location = chrome_binary
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
+    
+    # Add required arguments for both local and CI environments
+    chrome_options.add_argument('--headless=new')  # New headless mode
+    chrome_options.add_argument('--no-sandbox')  # Required for running in Docker/CI
+    chrome_options.add_argument('--disable-dev-shm-usage')  # Handle memory issues
+    chrome_options.add_argument('--disable-gpu')  # Required for Windows/Linux
+    chrome_options.add_argument('--ignore-ssl-errors=yes')
+    chrome_options.add_argument('--ignore-certificate-errors')
+    
+    # Set binary location if specified
+    if chrome_binary:
+        logging.info(f"Using Chrome binary from: {chrome_binary}")
+        chrome_options.binary_location = chrome_binary
     
     try:
-        # Create and return the WebDriver instance
-        service = Service(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        if chromedriver_path:
+            logging.info(f"Using ChromeDriver from: {chromedriver_path}")
+            service = Service(executable_path=chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+        else:
+            # Let webdriver manager handle it
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            
         logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
-        # Log detailed error information
         logging.error(f"Failed to set up Chrome WebDriver: {str(e)}")
         logging.error("System information:")
         logging.error(f"Python version: {sys.version}")
