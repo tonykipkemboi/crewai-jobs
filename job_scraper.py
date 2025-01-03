@@ -80,7 +80,27 @@ def setup_driver():
             print("Warning: Could not find ChromeDriver, using default service")
             service = Service()
     
-    return webdriver.Chrome(service=service, options=chrome_options)
+    # Print all Chrome options for debugging
+    print("\nChrome Options:")
+    print(f"Binary Location: {chrome_options.binary_location}")
+    print(f"Arguments: {chrome_options.arguments}")
+    
+    try:
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print("Successfully created Chrome WebDriver")
+        return driver
+    except Exception as e:
+        print(f"Error creating Chrome WebDriver: {str(e)}")
+        # List contents of binary location directory
+        if chrome_options.binary_location:
+            print(f"\nContents of binary directory:")
+            try:
+                binary_dir = os.path.dirname(chrome_options.binary_location)
+                print(f"Listing {binary_dir}:")
+                print(os.listdir(binary_dir))
+            except Exception as dir_error:
+                print(f"Error listing directory: {str(dir_error)}")
+        raise
 
 def safe_find_element(element, by, selector):
     """Safely find an element, returning None if not found."""
