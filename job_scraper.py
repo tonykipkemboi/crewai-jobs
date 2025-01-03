@@ -14,6 +14,7 @@ import pandas as pd
 import os
 from datetime import datetime, timezone
 import hashlib
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 # URL of the job listing site
 URL = "https://job.zip/jobs/crewai"
@@ -33,14 +34,16 @@ def setup_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--remote-debugging-port=9222")
     
-    # Add binary location for GitHub Actions
     if os.getenv('GITHUB_ACTIONS'):
-        chrome_options.binary_location = "/usr/bin/chrome"
-    
-    return webdriver.Chrome(options=chrome_options)
+        # Configuration for Selenium Docker container
+        return webdriver.Remote(
+            command_executor='http://localhost:4444/wd/hub',
+            options=chrome_options
+        )
+    else:
+        # Local development configuration
+        return webdriver.Chrome(options=chrome_options)
 
 def safe_find_element(element, by, selector):
     """Safely find an element, returning None if not found."""
