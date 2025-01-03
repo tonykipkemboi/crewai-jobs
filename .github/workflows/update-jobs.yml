@@ -20,20 +20,13 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install Chromium and ChromeDriver
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y chromium-browser chromium-chromedriver libnss3 libatk1.0-0
-        if ! command -v chromium-browser &> /dev/null; then
-          echo "Error: Chromium not installed"
-          exit 1
-        fi
-        if ! command -v chromedriver &> /dev/null; then
-          echo "Error: ChromeDriver not installed"
-          exit 1
-        fi
-        echo "CHROME_BIN=/usr/bin/chromium-browser" >> $GITHUB_ENV
-        echo "CHROMEDRIVER_PATH=/usr/bin/chromedriver" >> $GITHUB_ENV
+    - name: Setup Chrome and ChromeDriver
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Setup ChromeDriver
+      uses: nanasess/setup-chromedriver@v2
 
     - name: Install dependencies
       run: |
@@ -44,6 +37,8 @@ jobs:
       env:
         PYTHONUNBUFFERED: 1
       run: |
+        export CHROME_BIN=/usr/bin/google-chrome
+        export CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
         python job_scraper.py || { echo "Job scraper failed"; exit 1; }
 
     - name: Update Discourse
