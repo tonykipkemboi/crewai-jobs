@@ -8,69 +8,64 @@ on:
 jobs:
   update-jobs:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
         fetch-depth: 0
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
-    - name: Install Chrome and ChromeDriver
+
+    - name: Install Chromium and ChromeDriver
       run: |
         sudo apt-get update
-        # Add Google Chrome repository
-        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
-        sudo apt-get update
-        
-        # Install Chrome and ChromeDriver
-        sudo apt-get install -y google-chrome-stable
-        CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1)
-        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
-        wget -N "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
-        unzip chromedriver_linux64.zip
-        chmod +x chromedriver
-        sudo mv chromedriver /usr/local/bin/
-        
-        # Print versions and set environment variables
-        echo "Chrome version:"
-        google-chrome --version
-        echo "ChromeDriver version:"
-        chromedriver --version
-        echo "CHROME_BIN=$(which google-chrome)" >> $GITHUB_ENV
-        echo "CHROMEDRIVER_PATH=$(which chromedriver)" >> $GITHUB_ENV
-        
+        sudo apt-get install -y chromium-browser chromium-chromedriver libnss3 libatk1.0-0
+        if ! command -v chromium-browser &> /dev/null; then
+          echo "Error: Chromium not installed"
+          exit 1
+        fi
+        if ! command -v chromedriver &> /dev/null; then
+          echo "Error: ChromeDriver not installed"
+          exit 1
+        fi
+        echo "CHROME_BIN=/usr/bin/chromium-browser" >> $GITHUB_ENV
+        echo "CHROMEDRIVER_PATH=/usr/bin/chromedriver" >> $GITHUB_ENV
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
+
     - name: Run job scraper
       env:
         PYTHONUNBUFFERED: 1
-      run: python job_scraper.py
-        
+      run: |
+        python job_scraper.py || { echo "Job scraper failed"; exit 1; }
+
     - name: Update Discourse
       env:
         DISCOURSE_API_KEY: ${{ secrets.DISCOURSE_API_KEY }}
         DISCOURSE_USERNAME: ${{ secrets.DISCOURSE_USERNAME }}
         DISCOURSE_URL: ${{ secrets.DISCOURSE_URL }}
         DISCOURSE_CATEGORY_ID: ${{ secrets.DISCOURSE_CATEGORY_ID }}
-      run: python discourse_poster.py
-      
-    - name: Commit and push if changed
+      run: |
+        python discourse_poster.py || { echo "Discourse update failed"; exit 1; }
+
+    - name: Commit changes
+      id: commit
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         git add job_listings.xlsx
         git diff --quiet && git diff --staged --quiet || git commit -m "update: Job listings updated [skip ci]"
-        
+        echo "::set-output name=changes_made::true" || echo "::set-output name=changes_made::false"
+
     - name: Push changes
+      if: steps.commit.outputs.changes_made == 'true'
       uses: ad-m/github-push-action@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}

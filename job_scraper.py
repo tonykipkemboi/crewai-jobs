@@ -15,6 +15,9 @@ import os
 from datetime import datetime, timezone
 import hashlib
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+import logging
+import sys
+import platform
 
 # URL of the job listing site
 URL = "https://job.zip/jobs/crewai"
@@ -28,94 +31,55 @@ def generate_job_id(job_data):
     return hashlib.md5(unique_string.encode()).hexdigest()
 
 def setup_driver():
-    """Set up and return the Chrome WebDriver with appropriate options."""
-    print("\nSetting up Chrome WebDriver...")
+    """Set up and configure the Chrome WebDriver with appropriate options."""
+    logging.info("Setting up Chrome WebDriver...")
     
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
+    # Get browser binary path from environment variable or use default
+    chrome_binary = os.getenv('CHROME_BIN', '/usr/bin/chromium-browser')
+    chromedriver_path = os.getenv('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
     
-    # Get Chrome binary path from environment variable or use default paths
-    chrome_binary = os.getenv('CHROME_BIN')
-    print(f"Chrome binary from env: {chrome_binary}")
+    logging.info(f"Chrome binary path: {chrome_binary}")
+    logging.info(f"ChromeDriver path: {chromedriver_path}")
     
-    if chrome_binary and os.path.exists(chrome_binary):
-        print(f"Using Chrome binary from env: {chrome_binary}")
-        chrome_options.binary_location = chrome_binary
-    else:
-        print("Searching for Chrome binary in default locations...")
-        possible_binaries = [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/usr/bin/chromium-browser",
-            "/usr/bin/chromium",
-            "/snap/bin/chromium",
+    # Verify binary existence
+    if not os.path.exists(chrome_binary):
+        logging.warning(f"Chrome binary not found at {chrome_binary}")
+        # Try alternative locations
+        alternative_paths = [
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/snap/bin/chromium'
         ]
-        
-        # Find the first existing binary
-        for binary in possible_binaries:
-            if os.path.exists(binary):
-                print(f"Found Chrome binary at: {binary}")
-                chrome_options.binary_location = binary
+        for path in alternative_paths:
+            if os.path.exists(path):
+                chrome_binary = path
+                logging.info(f"Found Chrome binary at alternative location: {path}")
                 break
         else:
-            print("Warning: Could not find Chrome binary in any default location")
-            # List contents of /usr/bin to help debug
-            print("\nContents of /usr/bin (chrome-related):")
-            try:
-                for file in os.listdir("/usr/bin"):
-                    if "chrome" in file.lower():
-                        print(f"- {file}")
-            except Exception as e:
-                print(f"Error listing /usr/bin: {str(e)}")
+            raise FileNotFoundError(f"Chrome binary not found. Tried paths: {[chrome_binary] + alternative_paths}")
     
-    # Get ChromeDriver path from environment variable or use default
-    chromedriver_path = os.getenv('CHROMEDRIVER_PATH')
-    print(f"ChromeDriver path from env: {chromedriver_path}")
-    
-    if chromedriver_path and os.path.exists(chromedriver_path):
-        print(f"Using ChromeDriver from env: {chromedriver_path}")
-        service = Service(executable_path=chromedriver_path)
-    else:
-        print("Searching for ChromeDriver in default locations...")
-        chromedriver_paths = [
-            "/usr/bin/chromedriver",
-            "/usr/local/bin/chromedriver",
-            "/snap/bin/chromedriver",
-        ]
-        
-        for driver_path in chromedriver_paths:
-            if os.path.exists(driver_path):
-                print(f"Found ChromeDriver at: {driver_path}")
-                service = Service(executable_path=driver_path)
-                break
-        else:
-            print("Warning: Could not find ChromeDriver, using default service")
-            service = Service()
-    
-    # Print Chrome setup information
-    print("\nChrome Setup Information:")
-    print(f"Binary Location: {chrome_options.binary_location}")
-    print(f"Arguments: {chrome_options.arguments}")
-    print(f"Service path: {service.path if hasattr(service, 'path') else 'default'}")
+    # Set up Chrome options
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.binary_location = chrome_binary
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
     
     try:
-        print("\nCreating Chrome WebDriver...")
+        # Create and return the WebDriver instance
+        service = Service(executable_path=chromedriver_path)
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        print("Successfully created Chrome WebDriver")
+        logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
-        print(f"\nError creating Chrome WebDriver: {str(e)}")
-        # List contents of binary location directory
-        if chrome_options.binary_location:
-            try:
-                binary_dir = os.path.dirname(chrome_options.binary_location)
-                print(f"\nContents of {binary_dir}:")
-                print(os.listdir(binary_dir))
-            except Exception as dir_error:
-                print(f"Error listing directory: {str(dir_error)}")
+        # Log detailed error information
+        logging.error(f"Failed to set up Chrome WebDriver: {str(e)}")
+        logging.error("System information:")
+        logging.error(f"Python version: {sys.version}")
+        logging.error(f"Operating system: {platform.platform()}")
+        logging.error(f"Chrome binary location: {chrome_binary}")
+        logging.error(f"ChromeDriver path: {chromedriver_path}")
         raise
 
 def safe_find_element(element, by, selector):
