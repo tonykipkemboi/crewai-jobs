@@ -51,43 +51,55 @@ async def safe_click(page, selector, timeout=5000):
         logging.warning(f"Failed to click element {selector}: {str(e)}")
         return False
 
-async def safe_get_text(page, selector, timeout=5000):
+async def safe_get_text(page, selector, timeout=10000):
     """Safely get text from an element with timeout."""
     try:
         element = await page.wait_for_selector(selector, timeout=timeout)
         if element:
             return await element.text_content()
     except Exception as e:
-        logging.warning(f"Failed to get text from element {selector}: {str(e)}")
+        logging.debug(f"Failed to get text from element {selector}: {str(e)}")
     return ""
 
-async def extract_job_details(job_element):
+async def extract_job_details(page, job_element):
     """Extract job details with error handling for each field."""
     try:
         # Required fields
-        title_elem = await safe_get_text(job_element, ".//h3[contains(@class, 'font-bold')]")
-        company_elem = await safe_get_text(job_element, ".//div[contains(@class, 'text-orange-600')]")
+        title_elem = await job_element.query_selector("h3.font-bold")
+        company_elem = await job_element.query_selector("div.text-orange-600")
         
-        # Time is in the absolute-positioned paragraph
-        time_elem = await safe_get_text(job_element, ".//p[contains(@class, 'hidden sm:flex absolute right-2')]")
+        # Get text content
+        title = await title_elem.text_content() if title_elem else ""
+        company = await company_elem.text_content() if company_elem else ""
         
-        # Location is in the div's paragraph
-        location_elem = await safe_get_text(job_element, ".//div[2]/div[2]/div/p")
+        # Time posted
+        time_elem = await job_element.query_selector("p.hidden.sm\\:flex")
+        time_posted = await time_elem.text_content() if time_elem else ""
         
-        # Job type in separate paragraph
-        job_type_elem = await safe_get_text(job_element, ".//div[2]/div[2]/p")
+        # Location and job type are in flex container
+        info_container = await job_element.query_selector("div.flex.flex-col.gap-1.mt-2")
+        location = "Remote"  # Default to Remote
+        job_type = "Full-time"  # Default to Full-time
+        
+        if info_container:
+            # Location is usually in the first paragraph
+            paragraphs = await info_container.query_selector_all("p")
+            if len(paragraphs) >= 1:
+                location = await paragraphs[0].text_content()
+            if len(paragraphs) >= 2:
+                job_type = await paragraphs[1].text_content()
         
         # If any required field is missing, skip this job
-        if not all([title_elem, company_elem]):
+        if not all([title, company]):
             return None
 
         # Create job details dictionary
         job_details = {
-            "Title": title_elem.strip(),
-            "Company": company_elem.strip(),
-            "Location": location_elem.strip() if location_elem else "Location not specified",
-            "Job Type": job_type_elem.strip() if job_type_elem else "Not specified",
-            "Time_Posted": time_elem.strip() if time_elem else "",
+            "Title": title.strip(),
+            "Company": company.strip(),
+            "Location": location.strip(),
+            "Job Type": job_type.strip(),
+            "Time_Posted": time_posted.strip(),
             "Link": await job_element.get_attribute("href"),
             "First Seen": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
             "Last Seen": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
@@ -96,6 +108,7 @@ async def extract_job_details(job_element):
         
         # Debug print
         print(f"Extracted job: {job_details['Title']}")
+        print(f"Company: {job_details['Company']}")
         print(f"Location: {job_details['Location']}")
         print(f"Job Type: {job_details['Job Type']}")
         print(f"Time Posted: {job_details['Time_Posted']}")
@@ -107,17 +120,24 @@ async def extract_job_details(job_element):
         return job_details
         
     except Exception as e:
-        print(f"Error extracting job details for title: {title_elem if title_elem else 'Unknown'}")
-        print(f"Full error: {str(e)}")
+        print(f"Error extracting job details: {str(e)}")
         return None
 
 async def fetch_jobs():
     """Fetch job entries from the website using Playwright."""
-    playwright, browser, context, page = await setup_browser()
-    jobs = []
-    page_num = 1
+    playwright = None
+    browser = None
+    context = None
     
     try:
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        
+        jobs = []
+        page_num = 1
+        
         await page.goto(URL)
         await page.wait_for_load_state('networkidle')
         
@@ -125,14 +145,14 @@ async def fetch_jobs():
             print(f"Scraping page {page_num}...")
             
             # Wait for job elements to be present
-            job_elements = await page.query_selector_all("//a[contains(@class, 'flex flex-col') and contains(@rel, 'noopener noreferrer')]")
+            job_elements = await page.query_selector_all("a.flex.flex-col[rel='noopener noreferrer']")
             
             # Track existing job IDs before processing new ones
             existing_ids = {job['Job ID'] for job in jobs}
             
             page_jobs = []
             for job_element in job_elements:
-                job_details = await extract_job_details(job_element)
+                job_details = await extract_job_details(page, job_element)
                 if job_details and job_details['Job ID'] not in existing_ids:
                     page_jobs.append(job_details)
                     existing_ids.add(job_details['Job ID'])
@@ -142,25 +162,31 @@ async def fetch_jobs():
             
             # Try to find and click the "Load more jobs" button
             try:
-                load_more = await page.query_selector("//button[contains(text(), 'Load more jobs')]")
-                if load_more:
+                load_more = await page.query_selector("button:has-text('Load more jobs')")
+                if load_more and await load_more.is_visible():
                     await load_more.click()
                     await page.wait_for_load_state('networkidle')
                     page_num += 1
                 else:
+                    print("No more jobs to load")
                     break
             except Exception as e:
-                print("No more pages to load")
+                print(f"Error loading more jobs: {str(e)}")
                 break
                 
-    except Exception as e:
-        print(f"Error during scraping: {e}")
-    finally:
-        await context.close()
-        await browser.close()
-        await playwright.stop()
+        return jobs
         
-    return jobs
+    except Exception as e:
+        print(f"Error during scraping: {str(e)}")
+        return []
+        
+    finally:
+        if context:
+            await context.close()
+        if browser:
+            await browser.close()
+        if playwright:
+            await playwright.stop()
 
 def load_existing_jobs():
     """Load existing jobs from the spreadsheet."""
