@@ -37,10 +37,9 @@ def setup_driver():
     
     if os.getenv('GITHUB_ACTIONS'):
         # Configuration for Selenium Docker container
-        return webdriver.Remote(
-            command_executor='http://localhost:4444/wd/hub',
-            options=chrome_options
-        )
+        chrome_options.binary_location = "/usr/bin/chromium"  # Updated path for Selenium container
+        service = Service(executable_path="/usr/bin/chromedriver")
+        return webdriver.Chrome(service=service, options=chrome_options)
     else:
         # Local development configuration
         return webdriver.Chrome(options=chrome_options)
