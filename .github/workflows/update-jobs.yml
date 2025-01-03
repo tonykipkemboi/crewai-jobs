@@ -36,9 +36,8 @@ jobs:
     - name: Run job scraper
       env:
         PYTHONUNBUFFERED: 1
+        CHROME_BIN: /snap/chromium/current/usr/lib/chromium-browser/chrome
       run: |
-        export CHROME_BIN=/usr/bin/google-chrome
-        export CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
         python job_scraper.py || { echo "Job scraper failed"; exit 1; }
 
     - name: Update Discourse
