@@ -1,4 +1,3 @@
-selenium
 playwright==1.41.0
 pandas==2.2.3
 requests==2.32.3
