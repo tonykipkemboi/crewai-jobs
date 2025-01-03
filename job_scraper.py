@@ -35,51 +35,20 @@ def setup_driver():
     """Set up and configure the Chrome WebDriver with appropriate options."""
     logging.info("Setting up Chrome WebDriver...")
     
-    # Get browser binary path from environment variable or try common locations
-    chrome_binary = os.getenv('CHROME_BIN')
-    if not chrome_binary:
-        # Common locations for Chrome/Chromium binary
-        possible_paths = [
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium',
-            '/usr/bin/chromium-browser',
-            '/snap/bin/chromium',
-            '/snap/chromium/current/usr/lib/chromium-browser/chrome'  # Snap installation path
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                chrome_binary = path
-                logging.info(f"Found Chrome/Chromium binary at: {path}")
-                break
-        if not chrome_binary:
-            logging.warning("No Chrome binary found in common locations")
-    
     # Set up Chrome options
     chrome_options = webdriver.ChromeOptions()
     
-    # Add required arguments for both local and CI environments
-    chrome_options.add_argument('--headless=new')  # New headless mode
-    chrome_options.add_argument('--no-sandbox')  # Required for running in Docker/CI
-    chrome_options.add_argument('--disable-dev-shm-usage')  # Handle memory issues
-    chrome_options.add_argument('--disable-gpu')  # Required for Windows/Linux
+    # Add required arguments for container environment
+    chrome_options.add_argument('--headless=new')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--ignore-ssl-errors=yes')
     chrome_options.add_argument('--ignore-certificate-errors')
     
-    # Set binary location if found
-    if chrome_binary:
-        logging.info(f"Using Chrome binary from: {chrome_binary}")
-        chrome_options.binary_location = chrome_binary
-    
     try:
-        # Let webdriver manager handle ChromeDriver installation
-        from webdriver_manager.chrome import ChromeDriverManager
-        from webdriver_manager.core.utils import ChromeType
-        
-        # Use ChromeType.CHROMIUM if we're using Chromium
-        chrome_type = ChromeType.CHROMIUM if 'chromium' in (chrome_binary or '').lower() else ChromeType.GOOGLE
-        service = Service(ChromeDriverManager(chrome_type=chrome_type).install())
-        
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        # Create and return the WebDriver instance
+        driver = webdriver.Chrome(options=chrome_options)
         logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
@@ -87,7 +56,6 @@ def setup_driver():
         logging.error("System information:")
         logging.error(f"Python version: {sys.version}")
         logging.error(f"Operating system: {platform.platform()}")
-        logging.error(f"Chrome binary location: {chrome_binary}")
         raise
 
 def safe_find_element(element, by, selector):

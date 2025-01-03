@@ -8,6 +8,9 @@ on:
 jobs:
   update-jobs:
     runs-on: ubuntu-latest
+    container:
+      image: selenium/standalone-chrome:latest
+      options: --shm-size="2g"
 
     steps:
     - uses: actions/checkout@v4
@@ -20,14 +23,6 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Setup Chrome and ChromeDriver
-      uses: browser-actions/setup-chrome@v1
-      with:
-        chrome-version: stable
-
-    - name: Setup ChromeDriver
-      uses: nanasess/setup-chromedriver@v2
-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -36,7 +31,6 @@ jobs:
     - name: Run job scraper
       env:
         PYTHONUNBUFFERED: 1
-        CHROME_BIN: /snap/chromium/current/usr/lib/chromium-browser/chrome
       run: |
         python job_scraper.py || { echo "Job scraper failed"; exit 1; }
 
@@ -46,8 +40,7 @@ jobs:
         DISCOURSE_USERNAME: ${{ secrets.DISCOURSE_USERNAME }}
         DISCOURSE_URL: ${{ secrets.DISCOURSE_URL }}
         DISCOURSE_CATEGORY_ID: ${{ secrets.DISCOURSE_CATEGORY_ID }}
-      run: |
-        python discourse_poster.py || { echo "Discourse update failed"; exit 1; }
+      run: python discourse_poster.py || { echo "Discourse update failed"; exit 1; }
 
     - name: Commit changes
       id: commit
