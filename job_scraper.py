@@ -6,6 +6,7 @@ Job scraper for CrewAI job listings.
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.chrome.service import ChromeService
 import time
 import pandas as pd
 import os
@@ -37,17 +38,22 @@ def setup_driver():
     # Set up Chrome options
     chrome_options = webdriver.ChromeOptions()
     
-    # Add required arguments for container environment
+    # Add required arguments for headless environment
     chrome_options.add_argument('--headless=new')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
     
-    # Set binary location for container
-    chrome_options.binary_location = "/opt/google/chrome/chrome"
-    
     try:
-        driver = webdriver.Chrome(options=chrome_options)
+        # Set Chrome binary location
+        chrome_options.binary_location = "/usr/bin/google-chrome"
+        
+        # Set up Chrome service with explicit chromedriver path
+        service = ChromeService(executable_path="/usr/local/bin/chromedriver")
+        
+        # Initialize Chrome driver with service and options
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
