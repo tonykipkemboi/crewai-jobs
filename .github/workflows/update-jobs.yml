@@ -8,13 +8,10 @@ on:
 jobs:
   update-jobs:
     runs-on: ubuntu-latest
-    services:
-      selenium:
-        image: selenium/standalone-chrome:latest
-        options: >-
-          --shm-size="2g"
-        ports:
-          - 4444:4444
+    container: 
+      image: selenium/standalone-chrome:latest
+      options: >-
+        --shm-size="2g"
 
     steps:
     - uses: actions/checkout@v4

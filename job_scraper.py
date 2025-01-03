@@ -15,6 +15,9 @@ import logging
 import sys
 import platform
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # URL of the job listing site
 URL = "https://job.zip/jobs/crewai"
@@ -39,19 +42,12 @@ def setup_driver():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--ignore-ssl-errors=yes')
-    chrome_options.add_argument('--ignore-certificate-errors')
+    
+    # Set binary location for container
+    chrome_options.binary_location = "/opt/google/chrome/chrome"
     
     try:
-        # Connect to Selenium standalone container
-        selenium_url = os.getenv('SELENIUM_URL', 'http://localhost:4444/wd/hub')
-        logging.info(f"Connecting to Selenium at: {selenium_url}")
-        
-        driver = webdriver.Remote(
-            command_executor=selenium_url,
-            options=chrome_options
-        )
-        
+        driver = webdriver.Chrome(options=chrome_options)
         logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
@@ -59,7 +55,6 @@ def setup_driver():
         logging.error("System information:")
         logging.error(f"Python version: {sys.version}")
         logging.error(f"Operating system: {platform.platform()}")
-        logging.error(f"Selenium URL: {selenium_url}")
         raise
 
 def safe_find_element(element, by, selector):
