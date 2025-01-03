@@ -4,17 +4,13 @@ Job scraper for CrewAI job listings.
 """
 
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import time
 import pandas as pd
 import os
 from datetime import datetime, timezone
 import hashlib
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import logging
 import sys
 import platform
@@ -47,8 +43,15 @@ def setup_driver():
     chrome_options.add_argument('--ignore-certificate-errors')
     
     try:
-        # Create and return the WebDriver instance
-        driver = webdriver.Chrome(options=chrome_options)
+        # Connect to Selenium standalone container
+        selenium_url = os.getenv('SELENIUM_URL', 'http://localhost:4444/wd/hub')
+        logging.info(f"Connecting to Selenium at: {selenium_url}")
+        
+        driver = webdriver.Remote(
+            command_executor=selenium_url,
+            options=chrome_options
+        )
+        
         logging.info("Chrome WebDriver setup completed successfully")
         return driver
     except Exception as e:
@@ -56,6 +59,7 @@ def setup_driver():
         logging.error("System information:")
         logging.error(f"Python version: {sys.version}")
         logging.error(f"Operating system: {platform.platform()}")
+        logging.error(f"Selenium URL: {selenium_url}")
         raise
 
 def safe_find_element(element, by, selector):
