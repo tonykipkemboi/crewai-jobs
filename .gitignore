@@ -6,9 +6,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Excel files
-*.xlsx
-
 # Distribution / packaging
 dist/
 build/
@@ -18,7 +15,3 @@ build/
 venv/
 env/
 ENV/
-
-# IDE
-.idea/
-.vscode/
