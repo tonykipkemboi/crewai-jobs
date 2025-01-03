@@ -1,9 +1,10 @@
 selenium
-pandas
-requests
-webdriver_manager
-openpyxl
-python-dotenv
+playwright==1.41.0
+pandas==2.2.3
+requests==2.32.3
+webdriver_manager==4.0.2
+openpyxl==3.1.5
+python-dotenv==1.0.1
 beautifulsoup4==4.12.2
 pydantic==2.5.2
-aiohttp==3.10.11
+aiohttp==3.9.1

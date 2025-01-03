@@ -3,88 +3,79 @@
 Job scraper for CrewAI job listings.
 """
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-from selenium.webdriver.chrome.service import ChromeService
+import asyncio
+from playwright.async_api import async_playwright
 import time
 import pandas as pd
 import os
-from datetime import datetime, timezone
+import json
 import hashlib
 import logging
 import sys
 import platform
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime, timezone
 
 # URL of the job listing site
 URL = "https://job.zip/jobs/crewai"
 FILE_NAME = "job_listings.xlsx"
 
-def generate_job_id(job_data):
-    """Generate a unique ID for a job based on its content."""
-    # Combine title, company, and location to create a unique identifier
-    unique_string = f"{job_data['Title']}{job_data['Company']}{job_data['Location']}"
-    # Create a hash of the string to use as ID
-    return hashlib.md5(unique_string.encode()).hexdigest()
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s'
+)
 
-def setup_driver():
-    """Set up and configure the Chrome WebDriver with appropriate options."""
-    logging.info("Setting up Chrome WebDriver...")
-    
-    # Set up Chrome options
-    chrome_options = webdriver.ChromeOptions()
-    
-    # Add required arguments for headless environment
-    chrome_options.add_argument('--headless=new')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    
+async def setup_browser():
+    """Set up and configure the browser with Playwright."""
+    logging.info("Setting up browser...")
     try:
-        # Set Chrome binary location
-        chrome_options.binary_location = "/usr/bin/google-chrome"
-        
-        # Set up Chrome service with explicit chromedriver path
-        service = ChromeService(executable_path="/usr/local/bin/chromedriver")
-        
-        # Initialize Chrome driver with service and options
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        
-        logging.info("Chrome WebDriver setup completed successfully")
-        return driver
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        logging.info("Browser setup completed successfully")
+        return playwright, browser, context, page
     except Exception as e:
-        logging.error(f"Failed to set up Chrome WebDriver: {str(e)}")
+        logging.error(f"Failed to set up browser: {str(e)}")
         logging.error("System information:")
         logging.error(f"Python version: {sys.version}")
         logging.error(f"Operating system: {platform.platform()}")
         raise
 
-def safe_find_element(element, by, selector):
-    """Safely find an element, returning None if not found."""
+async def safe_click(page, selector, timeout=5000):
+    """Safely click an element with timeout."""
     try:
-        return element.find_element(by, selector)
-    except Exception:
-        return None
+        await page.click(selector, timeout=timeout)
+        return True
+    except Exception as e:
+        logging.warning(f"Failed to click element {selector}: {str(e)}")
+        return False
 
-def extract_job_details(job_element):
+async def safe_get_text(page, selector, timeout=5000):
+    """Safely get text from an element with timeout."""
+    try:
+        element = await page.wait_for_selector(selector, timeout=timeout)
+        if element:
+            return await element.text_content()
+    except Exception as e:
+        logging.warning(f"Failed to get text from element {selector}: {str(e)}")
+    return ""
+
+async def extract_job_details(job_element):
     """Extract job details with error handling for each field."""
     try:
         # Required fields
-        title_elem = safe_find_element(job_element, By.XPATH, ".//h3[contains(@class, 'font-bold')]")
-        company_elem = safe_find_element(job_element, By.XPATH, ".//div[contains(@class, 'text-orange-600')]")
+        title_elem = await safe_get_text(job_element, ".//h3[contains(@class, 'font-bold')]")
+        company_elem = await safe_get_text(job_element, ".//div[contains(@class, 'text-orange-600')]")
         
         # Time is in the absolute-positioned paragraph
-        time_elem = safe_find_element(job_element, By.XPATH, ".//p[contains(@class, 'hidden sm:flex absolute right-2')]")
+        time_elem = await safe_get_text(job_element, ".//p[contains(@class, 'hidden sm:flex absolute right-2')]")
         
         # Location is in the div's paragraph
-        location_elem = safe_find_element(job_element, By.XPATH, ".//div[2]/div[2]/div/p")
+        location_elem = await safe_get_text(job_element, ".//div[2]/div[2]/div/p")
         
         # Job type in separate paragraph
-        job_type_elem = safe_find_element(job_element, By.XPATH, ".//div[2]/div[2]/p")
+        job_type_elem = await safe_get_text(job_element, ".//div[2]/div[2]/p")
         
         # If any required field is missing, skip this job
         if not all([title_elem, company_elem]):
@@ -92,12 +83,12 @@ def extract_job_details(job_element):
 
         # Create job details dictionary
         job_details = {
-            "Title": title_elem.text.strip(),
-            "Company": company_elem.text.strip(),
-            "Location": location_elem.text.strip() if location_elem else "Location not specified",
-            "Job Type": job_type_elem.text.strip() if job_type_elem else "Not specified",
-            "Time_Posted": time_elem.text.strip() if time_elem else "",
-            "Link": job_element.get_attribute("href"),
+            "Title": title_elem.strip(),
+            "Company": company_elem.strip(),
+            "Location": location_elem.strip() if location_elem else "Location not specified",
+            "Job Type": job_type_elem.strip() if job_type_elem else "Not specified",
+            "Time_Posted": time_elem.strip() if time_elem else "",
+            "Link": await job_element.get_attribute("href"),
             "First Seen": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
             "Last Seen": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
             "Status": "Active"
@@ -111,46 +102,37 @@ def extract_job_details(job_element):
         print("-" * 50)
         
         # Generate unique ID
-        job_details["Job ID"] = generate_job_id(job_details)
+        job_details["Job ID"] = hashlib.md5(f"{job_details['Title']}{job_details['Company']}{job_details['Location']}".encode()).hexdigest()
         
         return job_details
         
     except Exception as e:
-        print(f"Error extracting job details for title: {title_elem.text if title_elem else 'Unknown'}")
+        print(f"Error extracting job details for title: {title_elem if title_elem else 'Unknown'}")
         print(f"Full error: {str(e)}")
         return None
 
-def fetch_jobs():
-    """Scrape job entries from the website using Selenium."""
-    driver = setup_driver()
+async def fetch_jobs():
+    """Fetch job entries from the website using Playwright."""
+    playwright, browser, context, page = await setup_browser()
     jobs = []
     page_num = 1
     
     try:
-        driver.get(URL)
-        time.sleep(2)  # Initial page load
-
+        await page.goto(URL)
+        await page.wait_for_load_state('networkidle')
+        
         while True:
             print(f"Scraping page {page_num}...")
             
             # Wait for job elements to be present
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_all_elements_located(
-                    (By.XPATH, "//a[contains(@class, 'flex flex-col') and contains(@rel, 'noopener noreferrer')]")
-                )
-            )
-            
-            job_elements = driver.find_elements(
-                By.XPATH, 
-                "//a[contains(@class, 'flex flex-col') and contains(@rel, 'noopener noreferrer')]"
-            )
+            job_elements = await page.query_selector_all("//a[contains(@class, 'flex flex-col') and contains(@rel, 'noopener noreferrer')]")
             
             # Track existing job IDs before processing new ones
             existing_ids = {job['Job ID'] for job in jobs}
             
             page_jobs = []
             for job_element in job_elements:
-                job_details = extract_job_details(job_element)
+                job_details = await extract_job_details(job_element)
                 if job_details and job_details['Job ID'] not in existing_ids:
                     page_jobs.append(job_details)
                     existing_ids.add(job_details['Job ID'])
@@ -160,16 +142,13 @@ def fetch_jobs():
             
             # Try to find and click the "Load more jobs" button
             try:
-                load_more = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable(
-                        (By.XPATH, "//button[contains(text(), 'Load more jobs')]")
-                    )
-                )
-                driver.execute_script("arguments[0].scrollIntoView();", load_more)
-                time.sleep(1)
-                load_more.click()
-                time.sleep(3)  # Wait for new content to load
-                page_num += 1
+                load_more = await page.query_selector("//button[contains(text(), 'Load more jobs')]")
+                if load_more:
+                    await load_more.click()
+                    await page.wait_for_load_state('networkidle')
+                    page_num += 1
+                else:
+                    break
             except Exception as e:
                 print("No more pages to load")
                 break
@@ -177,7 +156,9 @@ def fetch_jobs():
     except Exception as e:
         print(f"Error during scraping: {e}")
     finally:
-        driver.quit()
+        await context.close()
+        await browser.close()
+        await playwright.stop()
         
     return jobs
 
@@ -251,15 +232,16 @@ def save_jobs(df):
     except Exception as e:
         print(f"Error saving jobs: {e}")
 
-def main():
-    print(f"Starting job scraper at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+async def main():
+    """Main function."""
+    logging.info(f"Starting job scraper at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     
     # Load existing jobs
     existing_df = load_existing_jobs()
     print(f"Loaded {len(existing_df)} existing jobs")
     
     # Fetch new jobs
-    new_jobs = fetch_jobs()
+    new_jobs = await fetch_jobs()
     print(f"Fetched {len(new_jobs)} jobs from website")
     
     # Update job listings
@@ -269,4 +251,4 @@ def main():
     save_jobs(updated_df)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
