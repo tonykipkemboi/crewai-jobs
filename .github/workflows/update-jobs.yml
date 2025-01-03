@@ -1,0 +1,39 @@
+name: Update CrewAI Job Listings
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # Runs every 12 hours
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  update-jobs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install Chrome and ChromeDriver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y chromium-browser chromium-chromedriver
+        
+    - name: Run job scraper
+      run: python job_scraper.py
+        
+    - name: Update Discourse
+      env:
+        DISCOURSE_API_KEY: ${{ secrets.DISCOURSE_API_KEY }}
+        DISCOURSE_USERNAME: ${{ secrets.DISCOURSE_USERNAME }}
+        DISCOURSE_URL: ${{ secrets.DISCOURSE_URL }}
+        DISCOURSE_CATEGORY_ID: ${{ secrets.DISCOURSE_CATEGORY_ID }}
+      run: python discourse_poster.py
